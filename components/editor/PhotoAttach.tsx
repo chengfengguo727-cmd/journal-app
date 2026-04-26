@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import imageCompression from 'browser-image-compression'
-import { Camera, X, Loader2, Trash2 } from 'lucide-react'
+import { Camera, ImagePlus, X, Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import type { JournalPhoto } from '@/types'
@@ -24,7 +24,8 @@ export function PhotoAttach({ date, userId }: Props) {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const libraryInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     void load()
@@ -93,7 +94,8 @@ export function PhotoAttach({ date, userId }: Props) {
       toast.success(`上傳 ${uploaded.length} 張照片`)
     }
     setUploading(false)
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (cameraInputRef.current) cameraInputRef.current.value = ''
+    if (libraryInputRef.current) libraryInputRef.current.value = ''
   }
 
   async function handleDelete(photo: JournalPhoto) {
@@ -115,21 +117,43 @@ export function PhotoAttach({ date, userId }: Props) {
         <h2 className="text-sm font-semibold text-muted-foreground">
           照片 {photos.length > 0 && <span>· {photos.length}</span>}
         </h2>
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-accent disabled:opacity-50"
-        >
+        <div className="flex items-center gap-1.5">
           {uploading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <span className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              上傳中…
+            </span>
           ) : (
-            <Camera className="h-3.5 w-3.5" />
+            <>
+              <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-accent"
+              >
+                <Camera className="h-3.5 w-3.5" />
+                拍照
+              </button>
+              <button
+                type="button"
+                onClick={() => libraryInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs hover:bg-accent"
+              >
+                <ImagePlus className="h-3.5 w-3.5" />
+                從相簿
+              </button>
+            </>
           )}
-          {uploading ? '上傳中…' : '加入照片'}
-        </button>
+        </div>
         <input
-          ref={fileInputRef}
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+        <input
+          ref={libraryInputRef}
           type="file"
           accept="image/*"
           multiple
