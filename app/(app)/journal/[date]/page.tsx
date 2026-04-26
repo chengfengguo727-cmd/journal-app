@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { isValidISODate, todayISO } from '@/lib/utils'
 import { JournalEditor } from '@/components/editor/JournalEditor'
 import { PhotoAttach } from '@/components/editor/PhotoAttach'
+import { VoiceMemos } from '@/components/editor/VoiceMemos'
 import type { JournalEntry } from '@/types'
 
 interface Props {
@@ -89,6 +90,7 @@ export default async function JournalPage({ params }: Props) {
       </header>
 
       <JournalEditor date={date} initialEntry={entry} />
+      <VoiceMemos date={date} />
       <PhotoAttach date={date} userId={user.id} />
     </div>
   )

@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner'
 import { MoodSelector } from './MoodSelector'
 import { TagInput } from './TagInput'
+import { VoiceRecorder } from './VoiceRecorder'
 import { PRESET_MOOD_TAGS, type JournalEntry, type MoodScore } from '@/types'
 import { cn, countWords } from '@/lib/utils'
 
@@ -124,7 +125,17 @@ export function JournalEditor({ date, initialEntry }: Props) {
 
   return (
     <div className="flex flex-col">
-      <Toolbar editor={editor} />
+      <Toolbar
+        editor={editor}
+        rightSlot={
+          <VoiceRecorder
+            date={date}
+            onTranscript={(text) =>
+              editor.chain().focus().insertContent(text + ' ').run()
+            }
+          />
+        }
+      />
 
       <div className="border-y bg-muted/20 px-4 py-3 md:px-6">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -168,7 +179,13 @@ export function JournalEditor({ date, initialEntry }: Props) {
   )
 }
 
-function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
+function Toolbar({
+  editor,
+  rightSlot,
+}: {
+  editor: ReturnType<typeof useEditor>
+  rightSlot?: React.ReactNode
+}) {
   if (!editor) return null
   const items = [
     {
@@ -215,21 +232,24 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
     },
   ]
   return (
-    <div className="flex items-center gap-1 border-b bg-background px-3 py-2 md:px-6">
-      {items.map(({ icon: Icon, title, action, active }) => (
-        <button
-          key={title}
-          type="button"
-          title={title}
-          onClick={action}
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground',
-            active() && 'bg-accent text-foreground',
-          )}
-        >
-          <Icon className="h-4 w-4" />
-        </button>
-      ))}
+    <div className="flex items-center justify-between gap-2 border-b bg-background px-3 py-2 md:px-6">
+      <div className="flex items-center gap-1">
+        {items.map(({ icon: Icon, title, action, active }) => (
+          <button
+            key={title}
+            type="button"
+            title={title}
+            onClick={action}
+            className={cn(
+              'flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground',
+              active() && 'bg-accent text-foreground',
+            )}
+          >
+            <Icon className="h-4 w-4" />
+          </button>
+        ))}
+      </div>
+      {rightSlot}
     </div>
   )
 }
