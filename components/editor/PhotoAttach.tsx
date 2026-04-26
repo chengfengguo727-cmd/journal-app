@@ -133,7 +133,6 @@ export function PhotoAttach({ date, userId }: Props) {
           type="file"
           accept="image/*"
           multiple
-          capture="environment"
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />
