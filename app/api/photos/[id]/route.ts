@@ -26,12 +26,11 @@ export async function DELETE(
     return NextResponse.json({ error: 'not found' }, { status: 404 })
   }
 
-  // 從 public URL 解出 storage path（格式：.../storage/v1/object/public/journal-photos/<path>）
-  if (photo.source === 'upload') {
-    const m = photo.photo_url.match(/\/storage\/v1\/object\/public\/journal-photos\/(.+)$/)
-    if (m) {
-      await supabase.storage.from('journal-photos').remove([m[1]])
-    }
+  // 從 public URL 解出 storage path（同時支援 source='upload' 與 google_photos
+  // 後者也已下載到 Supabase Storage）。Picker 直連 URL 會 match 不到 → 略過。
+  const m = photo.photo_url.match(/\/storage\/v1\/object\/public\/journal-photos\/(.+)$/)
+  if (m) {
+    await supabase.storage.from('journal-photos').remove([m[1]])
   }
 
   const { error: deleteErr } = await supabase

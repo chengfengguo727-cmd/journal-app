@@ -179,9 +179,7 @@ export function GooglePhotosPanel({ date }: Props) {
           {state.kind === 'idle' && (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
-                會開新視窗讓你從 Google 相簿挑照片，挑完關掉視窗就會自動加入日誌。
-                <br />
-                ⚠️ 因 Google API 限制，連結的照片約 7 天後失效，需重新挑選。
+                會開新視窗讓你從 Google 相簿挑照片，挑完關掉視窗就會自動下載並加入日誌。
               </p>
               <button
                 type="button"
