@@ -108,7 +108,7 @@ export function GooglePhotosPanel({ date }: Props) {
     const toLink = items.filter((i) => !i.linked)
     if (toLink.length === 0) {
       toast(items.length > 0 ? '挑選的照片都已經加入過了' : '沒有選任何照片')
-      cleanup(sessionId)
+      setState({ kind: 'idle' })
       return
     }
 
@@ -147,24 +147,20 @@ export function GooglePhotosPanel({ date }: Props) {
       toast.success(`已加入 ${done} 張`)
     }
 
-    cleanup(sessionId)
-  }
-
-  function cleanup(sessionId: string) {
-    void fetch(
-      `/api/photos/google/picker/session?session_id=${sessionId}`,
-      { method: 'DELETE' },
-    )
+    // 不刪除 session — 一刪 baseUrl 立即失效。讓它自然過期。
     setState({ kind: 'idle' })
   }
 
   function reset() {
     stopPoll()
     if (state.kind === 'waiting') {
-      cleanup(state.sessionId)
-    } else {
-      setState({ kind: 'idle' })
+      // 使用者主動取消、還沒選照片 → 清掉 session 沒差
+      void fetch(
+        `/api/photos/google/picker/session?session_id=${state.sessionId}`,
+        { method: 'DELETE' },
+      )
     }
+    setState({ kind: 'idle' })
   }
 
   return (
