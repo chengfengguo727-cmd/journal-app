@@ -2,9 +2,8 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, ChevronUp, Loader2, Plus } from 'lucide-react'
+import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
 
 interface PickerItem {
   id: string
@@ -24,14 +23,13 @@ type State =
   | { kind: 'idle' }
   | { kind: 'creating' }
   | { kind: 'waiting'; sessionId: string; pickerUri: string }
-  | { kind: 'loaded'; sessionId: string; items: PickerItem[] }
+  | { kind: 'linking'; total: number; done: number }
   | { kind: 'not_connected' }
   | { kind: 'error'; message: string }
 
 export function GooglePhotosPanel({ date }: Props) {
   const [open, setOpen] = useState(false)
   const [state, setState] = useState<State>({ kind: 'idle' })
-  const [linkingId, setLinkingId] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   function stopPoll() {
@@ -59,11 +57,9 @@ export function GooglePhotosPanel({ date }: Props) {
       }
       const { session_id, picker_uri, polling_interval_ms } = await res.json()
 
-      // 開新分頁讓使用者選照片
       window.open(picker_uri, '_blank', 'noopener,noreferrer')
       setState({ kind: 'waiting', sessionId: session_id, pickerUri: picker_uri })
 
-      // 開始 poll
       const interval = Math.max(2000, polling_interval_ms || 3000)
       pollRef.current = setInterval(() => void pollSession(session_id), interval)
     } catch (err) {
@@ -83,14 +79,15 @@ export function GooglePhotosPanel({ date }: Props) {
       const { media_items_set } = await res.json()
       if (media_items_set) {
         stopPoll()
-        await loadItems(sessionId)
+        await fetchAndLink(sessionId)
       }
     } catch {
       // 略過 poll 失敗
     }
   }
 
-  async function loadItems(sessionId: string) {
+  async function fetchAndLink(sessionId: string) {
+    let items: PickerItem[]
     try {
       const res = await fetch(
         `/api/photos/google/picker/items?session_id=${sessionId}`,
@@ -99,68 +96,75 @@ export function GooglePhotosPanel({ date }: Props) {
         const e = await res.json().catch(() => ({}))
         throw new Error(e.error || '讀取照片失敗')
       }
-      const items = (await res.json()) as PickerItem[]
-      if (items.length === 0) {
-        setState({ kind: 'idle' })
-        toast('沒有選任何照片')
-        return
-      }
-      setState({ kind: 'loaded', sessionId, items })
+      items = await res.json()
     } catch (err) {
       setState({
         kind: 'error',
-        message: err instanceof Error ? err.message : '失敗',
+        message: err instanceof Error ? err.message : '讀取失敗',
       })
+      return
     }
+
+    const toLink = items.filter((i) => !i.linked)
+    if (toLink.length === 0) {
+      toast(items.length > 0 ? '挑選的照片都已經加入過了' : '沒有選任何照片')
+      cleanup(sessionId)
+      return
+    }
+
+    setState({ kind: 'linking', total: toLink.length, done: 0 })
+
+    let done = 0
+    let failed = 0
+    for (const item of toLink) {
+      try {
+        const res = await fetch('/api/photos/google/link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            date,
+            google_photo_id: item.id,
+            thumbnail_url: item.thumbnail_url,
+            full_url: item.full_url,
+            taken_at: item.taken_at,
+          }),
+        })
+        if (!res.ok) throw new Error()
+      } catch {
+        failed++
+      }
+      done++
+      setState({ kind: 'linking', total: toLink.length, done })
+    }
+
+    window.dispatchEvent(
+      new CustomEvent('journal-photo-added', { detail: { date } }),
+    )
+
+    if (failed > 0) {
+      toast.error(`加入 ${done - failed} 張，失敗 ${failed} 張`)
+    } else {
+      toast.success(`已加入 ${done} 張`)
+    }
+
+    cleanup(sessionId)
   }
 
-  async function link(item: PickerItem) {
-    setLinkingId(item.id)
-    try {
-      const res = await fetch('/api/photos/google/link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date,
-          google_photo_id: item.id,
-          thumbnail_url: item.thumbnail_url,
-          full_url: item.full_url,
-          taken_at: item.taken_at,
-        }),
-      })
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}))
-        throw new Error(e.error || '加入失敗')
-      }
-      if (state.kind === 'loaded') {
-        setState({
-          ...state,
-          items: state.items.map((p) =>
-            p.id === item.id ? { ...p, linked: true } : p,
-          ),
-        })
-      }
-      window.dispatchEvent(
-        new CustomEvent('journal-photo-added', { detail: { date } }),
-      )
-      toast.success('已加入')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : '加入失敗')
-    } finally {
-      setLinkingId(null)
-    }
+  function cleanup(sessionId: string) {
+    void fetch(
+      `/api/photos/google/picker/session?session_id=${sessionId}`,
+      { method: 'DELETE' },
+    )
+    setState({ kind: 'idle' })
   }
 
   function reset() {
     stopPoll()
-    if (state.kind === 'loaded' || state.kind === 'waiting') {
-      // 清掉 session
-      void fetch(
-        `/api/photos/google/picker/session?session_id=${state.sessionId}`,
-        { method: 'DELETE' },
-      )
+    if (state.kind === 'waiting') {
+      cleanup(state.sessionId)
+    } else {
+      setState({ kind: 'idle' })
     }
-    setState({ kind: 'idle' })
   }
 
   return (
@@ -179,9 +183,9 @@ export function GooglePhotosPanel({ date }: Props) {
           {state.kind === 'idle' && (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
-                會開新視窗讓你從 Google 相簿挑照片，挑完按確認回來。
+                會開新視窗讓你從 Google 相簿挑照片，挑完關掉視窗就會自動加入日誌。
                 <br />
-                ⚠️ 因為 Google API 限制，連結的照片約 7 天後失效，需要重新挑選。
+                ⚠️ 因 Google API 限制，連結的照片約 7 天後失效，需重新挑選。
               </p>
               <button
                 type="button"
@@ -227,54 +231,10 @@ export function GooglePhotosPanel({ date }: Props) {
             </div>
           )}
 
-          {state.kind === 'loaded' && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>選了 {state.items.length} 張，按 + 加入日誌</span>
-                <button
-                  type="button"
-                  onClick={reset}
-                  className="hover:text-foreground"
-                >
-                  完成
-                </button>
-              </div>
-              <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-6">
-                {state.items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="group relative aspect-square overflow-hidden rounded-md bg-muted"
-                  >
-                    <img
-                      src={item.thumbnail_url}
-                      alt={item.filename}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      className="h-full w-full object-cover"
-                    />
-                    <button
-                      type="button"
-                      disabled={item.linked || linkingId === item.id}
-                      onClick={() => link(item)}
-                      className={cn(
-                        'absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 transition-opacity',
-                        item.linked
-                          ? 'opacity-100 bg-emerald-600/70'
-                          : 'group-hover:opacity-100',
-                        linkingId === item.id && 'opacity-100 bg-black/60',
-                      )}
-                    >
-                      {linkingId === item.id ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : item.linked ? (
-                        <Check className="h-5 w-5" />
-                      ) : (
-                        <Plus className="h-5 w-5" />
-                      )}
-                    </button>
-                  </div>
-                ))}
-              </div>
+          {state.kind === 'linking' && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              加入中… {state.done}/{state.total}
             </div>
           )}
 

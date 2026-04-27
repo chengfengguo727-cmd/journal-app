@@ -187,6 +187,7 @@ export function PhotoAttach({ date, userId }: Props) {
                 src={photo.photo_url}
                 alt={photo.caption ?? ''}
                 loading="lazy"
+                referrerPolicy="no-referrer"
                 className="h-full w-full object-cover transition-transform group-hover:scale-105"
               />
             </button>
@@ -267,6 +268,7 @@ function Lightbox({ photo, onClose, onDelete, onPrev, onNext }: LightboxProps) {
         <img
           src={photo.original_url ?? photo.photo_url}
           alt={photo.caption ?? ''}
+          referrerPolicy="no-referrer"
           className="max-h-full max-w-full object-contain"
           onClick={(e) => e.stopPropagation()}
         />
