@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { NotebookPen, CalendarDays, Image, BarChart3, Settings, LogOut } from 'lucide-react'
+import { NotebookPen, CalendarDays, Image, BarChart3, Search, Settings, LogOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 const NAV_ITEMS = [
   { href: '/', label: '今日', icon: NotebookPen, exact: true },
   { href: '/timeline', label: '時間軸', icon: CalendarDays },
+  { href: '/search', label: '搜尋', icon: Search },
   { href: '/gallery', label: '相片', icon: Image },
   { href: '/stats', label: '統計', icon: BarChart3 },
   { href: '/settings', label: '設定', icon: Settings },
@@ -80,7 +81,7 @@ export function BottomTabs() {
   const pathname = usePathname()
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 flex h-16 items-center justify-around border-t bg-background pb-[env(safe-area-inset-bottom)] md:hidden">
-      {NAV_ITEMS.slice(0, 4).map((item) => {
+      {NAV_ITEMS.slice(0, 5).map((item) => {
         const active = item.exact
           ? pathname === item.href || pathname.startsWith('/journal')
           : pathname.startsWith(item.href)
