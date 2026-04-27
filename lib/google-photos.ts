@@ -1,26 +1,40 @@
 /**
- * Google Photos Library API + OAuth helpers
- * 文件：https://developers.google.com/photos/library/reference/rest
+ * Google Photos Picker API + OAuth helpers
+ * 文件：https://developers.google.com/photos/picker/reference/rest
+ *
+ * 注意：原本的 Library API（photoslibrary.readonly）已於 2025-03 被 Google 限縮，
+ * 未驗證 app 拿不到。改用 Picker API：使用者透過 Google 自家視窗主動挑選照片，
+ * 我們只能拿到「他主動選的那幾張」，且 session 最長 7 天。
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-const SCOPE = 'https://www.googleapis.com/auth/photoslibrary.readonly'
+const SCOPE = 'https://www.googleapis.com/auth/photospicker.mediaitems.readonly'
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
-const PHOTOS_API_BASE = 'https://photoslibrary.googleapis.com/v1'
+const PICKER_API_BASE = 'https://photospicker.googleapis.com/v1'
 
-export interface GoogleMediaItem {
+export interface PickerMediaItem {
   id: string
-  productUrl: string
-  baseUrl: string
-  mimeType: string
-  filename: string
-  mediaMetadata?: {
-    creationTime?: string
-    width?: string
-    height?: string
+  createTime: string
+  type: 'PHOTO' | 'VIDEO'
+  mediaFile: {
+    baseUrl: string
+    mimeType: string
+    filename: string
+    mediaFileMetadata?: {
+      width?: number
+      height?: number
+    }
   }
+}
+
+export interface PickerSession {
+  id: string
+  pickerUri: string
+  pollingConfig?: { pollInterval?: string; timeoutIn?: string }
+  expireTime: string
+  mediaItemsSet: boolean
 }
 
 interface TokenResponse {
@@ -42,7 +56,7 @@ export function buildAuthorizeUrl(origin: string, state?: string): string {
     response_type: 'code',
     scope: SCOPE,
     access_type: 'offline',
-    prompt: 'consent',  // 強制每次都回傳 refresh_token
+    prompt: 'consent',
     include_granted_scopes: 'true',
   })
   if (state) params.set('state', state)
@@ -97,10 +111,6 @@ export async function refreshAccessToken(refreshToken: string) {
   }
 }
 
-/**
- * 取得目前有效的 access token，必要時自動 refresh 並更新資料庫。
- * 回傳 null 表示尚未連結 Google Photos。
- */
 export async function getValidAccessToken(
   userId: string,
   supabase: SupabaseClient,
@@ -114,15 +124,11 @@ export async function getValidAccessToken(
   if (!auth) return null
 
   const expiresAt = auth.expires_at ? new Date(auth.expires_at).getTime() : 0
-  // 提前 60 秒 refresh，避免邊界 race
   if (expiresAt > Date.now() + 60_000) {
     return auth.access_token
   }
 
-  if (!auth.refresh_token) {
-    // 沒 refresh token，token 已過期 → 需要使用者重連
-    return null
-  }
+  if (!auth.refresh_token) return null
 
   const refreshed = await refreshAccessToken(auth.refresh_token)
   await supabase
@@ -136,66 +142,73 @@ export async function getValidAccessToken(
   return refreshed.access_token
 }
 
-export async function searchPhotosByDate(
-  accessToken: string,
-  isoDate: string,
-): Promise<GoogleMediaItem[]> {
-  const [y, m, d] = isoDate.split('-').map(Number)
-  const res = await fetch(`${PHOTOS_API_BASE}/mediaItems:search`, {
+// ====================================================
+// Picker API
+// ====================================================
+
+export async function createPickerSession(accessToken: string): Promise<PickerSession> {
+  const res = await fetch(`${PICKER_API_BASE}/sessions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      filters: {
-        dateFilter: {
-          dates: [{ year: y, month: m, day: d }],
-        },
-      },
-      pageSize: 100,
-    }),
+    body: JSON.stringify({}),
   })
   if (!res.ok) {
-    throw new Error(`Search failed: ${res.status} ${await res.text()}`)
+    throw new Error(`Create session failed: ${res.status} ${await res.text()}`)
   }
-  const data = (await res.json()) as { mediaItems?: GoogleMediaItem[] }
-  return data.mediaItems ?? []
+  return (await res.json()) as PickerSession
 }
 
-export async function batchGetMediaItems(
+export async function getPickerSession(
   accessToken: string,
-  ids: string[],
-): Promise<Record<string, GoogleMediaItem>> {
-  if (ids.length === 0) return {}
-  // batchGet supports up to 50 IDs
-  const chunks: string[][] = []
-  for (let i = 0; i < ids.length; i += 50) {
-    chunks.push(ids.slice(i, i + 50))
+  sessionId: string,
+): Promise<PickerSession> {
+  const res = await fetch(`${PICKER_API_BASE}/sessions/${sessionId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!res.ok) {
+    throw new Error(`Get session failed: ${res.status} ${await res.text()}`)
   }
+  return (await res.json()) as PickerSession
+}
 
-  const result: Record<string, GoogleMediaItem> = {}
-  for (const chunk of chunks) {
-    const params = new URLSearchParams()
-    chunk.forEach((id) => params.append('mediaItemIds', id))
-    const res = await fetch(`${PHOTOS_API_BASE}/mediaItems:batchGet?${params.toString()}`, {
+export async function deletePickerSession(
+  accessToken: string,
+  sessionId: string,
+): Promise<void> {
+  await fetch(`${PICKER_API_BASE}/sessions/${sessionId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}
+
+export async function listPickedMediaItems(
+  accessToken: string,
+  sessionId: string,
+): Promise<PickerMediaItem[]> {
+  const items: PickerMediaItem[] = []
+  let pageToken: string | undefined
+
+  do {
+    const params = new URLSearchParams({ sessionId, pageSize: '100' })
+    if (pageToken) params.set('pageToken', pageToken)
+    const res = await fetch(`${PICKER_API_BASE}/mediaItems?${params.toString()}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
     if (!res.ok) {
-      // 部分失敗不要整個壞掉
-      continue
+      throw new Error(`List items failed: ${res.status} ${await res.text()}`)
     }
     const data = (await res.json()) as {
-      mediaItemResults?: Array<{
-        mediaItem?: GoogleMediaItem
-        status?: { code: number; message: string }
-      }>
+      mediaItems?: PickerMediaItem[]
+      nextPageToken?: string
     }
-    data.mediaItemResults?.forEach((r) => {
-      if (r.mediaItem) result[r.mediaItem.id] = r.mediaItem
-    })
-  }
-  return result
+    items.push(...(data.mediaItems ?? []))
+    pageToken = data.nextPageToken
+  } while (pageToken)
+
+  return items
 }
 
 export function thumbnailUrl(baseUrl: string, size = 400): string {

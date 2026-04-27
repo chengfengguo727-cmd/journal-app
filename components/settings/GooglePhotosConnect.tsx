@@ -101,7 +101,9 @@ export function GooglePhotosConnect() {
   return (
     <div className="space-y-2">
       <p className="text-sm text-muted-foreground">
-        連結後可在每篇日誌瀏覽當天的 Google Photos 並一鍵加入。
+        連結後可在日誌頁面開啟 Google 相簿挑選器加入照片。
+        <br />
+        ⚠️ 因 Google API 限制（Picker 模式），加入的照片約 7 天後失效需重選。
       </p>
       <Button asChild size="sm">
         <a href="/api/photos/google/auth">
