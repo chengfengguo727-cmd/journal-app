@@ -29,6 +29,12 @@ export function PhotoAttach({ date, userId }: Props) {
 
   useEffect(() => {
     void load()
+    function handler(e: Event) {
+      const detail = (e as CustomEvent).detail as { date?: string } | undefined
+      if (detail?.date === date) void load()
+    }
+    window.addEventListener('journal-photo-added', handler)
+    return () => window.removeEventListener('journal-photo-added', handler)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date])
 

@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { isValidISODate } from '@/lib/utils'
+import {
+  batchGetMediaItems,
+  fullSizeUrl,
+  getValidAccessToken,
+  thumbnailUrl,
+} from '@/lib/google-photos'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -42,7 +48,35 @@ export async function GET(request: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-  return NextResponse.json(data ?? [])
+
+  const rows = data ?? []
+
+  // 替 google_photos 來源刷新 baseUrl（會在 ~60 分鐘過期）
+  const googleRows = rows.filter(
+    (r) => r.source === 'google_photos' && r.google_photo_id,
+  )
+  if (googleRows.length > 0) {
+    const accessToken = await getValidAccessToken(user.id, supabase)
+    if (accessToken) {
+      const ids = googleRows.map((r) => r.google_photo_id as string)
+      try {
+        const fresh = await batchGetMediaItems(accessToken, ids)
+        rows.forEach((r) => {
+          if (r.source === 'google_photos' && r.google_photo_id) {
+            const item = fresh[r.google_photo_id]
+            if (item) {
+              r.photo_url = thumbnailUrl(item.baseUrl)
+              r.original_url = fullSizeUrl(item.baseUrl)
+            }
+          }
+        })
+      } catch {
+        // refresh 失敗不擋 list，前端 img 載失敗就會看到 broken icon
+      }
+    }
+  }
+
+  return NextResponse.json(rows)
 }
 
 export async function POST(request: Request) {
