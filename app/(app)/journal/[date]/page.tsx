@@ -7,6 +7,8 @@ import { JournalEditor } from '@/components/editor/JournalEditor'
 import { PhotoAttach } from '@/components/editor/PhotoAttach'
 import { GooglePhotosPanel } from '@/components/editor/GooglePhotosPanel'
 import { VoiceMemos } from '@/components/editor/VoiceMemos'
+import { AISummary } from '@/components/editor/AISummary'
+import { OnThisDay } from '@/components/editor/OnThisDay'
 import type { JournalEntry } from '@/types'
 
 interface Props {
@@ -94,6 +96,8 @@ export default async function JournalPage({ params }: Props) {
       <VoiceMemos date={date} />
       <PhotoAttach date={date} userId={user.id} />
       <GooglePhotosPanel date={date} />
+      <AISummary entryId={entry?.id ?? null} initialSummary={entry?.ai_summary ?? null} />
+      <OnThisDay date={date} />
     </div>
   )
 }
