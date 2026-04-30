@@ -1,6 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { GooglePhotosConnect } from '@/components/settings/GooglePhotosConnect'
+import { ThemeToggle } from '@/components/settings/ThemeToggle'
+import { ExportButtons } from '@/components/settings/ExportButtons'
+import { PushNotifications } from '@/components/settings/PushNotifications'
 
 export default async function SettingsPage() {
   const supabase = createClient()
@@ -26,6 +29,24 @@ export default async function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle className="text-lg">外觀</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ThemeToggle />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">通知</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PushNotifications />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle className="text-lg">Google Photos</CardTitle>
         </CardHeader>
         <CardContent>
@@ -33,9 +54,14 @@ export default async function SettingsPage() {
         </CardContent>
       </Card>
 
-      <p className="text-sm text-muted-foreground">
-        通知、推播、備份等功能將於 Phase 5 開放。
-      </p>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">匯出</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ExportButtons />
+        </CardContent>
+      </Card>
     </div>
   )
 }

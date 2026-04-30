@@ -12,12 +12,14 @@ import { toast } from 'sonner'
 import { MoodSelector } from './MoodSelector'
 import { TagInput } from './TagInput'
 import { VoiceRecorder } from './VoiceRecorder'
+import { WeatherPicker } from './WeatherPicker'
 import { PRESET_MOOD_TAGS, type JournalEntry, type MoodScore } from '@/types'
 import { cn, countWords } from '@/lib/utils'
+import { enqueueEntry } from '@/lib/offline-queue'
 
 const SAVE_DEBOUNCE_MS = 2000
 
-type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error' | 'queued'
 
 interface Props {
   date: string
@@ -30,6 +32,7 @@ export function JournalEditor({ date, initialEntry }: Props) {
   )
   const [moodTags, setMoodTags] = useState<string[]>(initialEntry?.mood_tags ?? [])
   const [customTags, setCustomTags] = useState<string[]>(initialEntry?.custom_tags ?? [])
+  const [weather, setWeather] = useState<string | null>(initialEntry?.weather ?? null)
   const [status, setStatus] = useState<SaveStatus>('idle')
   const [wordCount, setWordCount] = useState<number>(initialEntry?.word_count ?? 0)
 
@@ -40,6 +43,7 @@ export function JournalEditor({ date, initialEntry }: Props) {
     moodScore,
     moodTags,
     customTags,
+    weather,
   })
 
   const editor = useEditor({
@@ -76,18 +80,20 @@ export function JournalEditor({ date, initialEntry }: Props) {
 
   async function save() {
     const { content, content_html } = latestState.current
+    const payload = {
+      date,
+      content,
+      content_html,
+      mood_score: latestState.current.moodScore,
+      mood_tags: latestState.current.moodTags,
+      custom_tags: latestState.current.customTags,
+      weather: latestState.current.weather,
+    }
     try {
       const res = await fetch('/api/entries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          date,
-          content,
-          content_html,
-          mood_score: latestState.current.moodScore,
-          mood_tags: latestState.current.moodTags,
-          custom_tags: latestState.current.customTags,
-        }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -95,20 +101,34 @@ export function JournalEditor({ date, initialEntry }: Props) {
       }
       setStatus('saved')
     } catch (err) {
+      // 離線（或網路錯誤）→ enqueue，連線後 OfflineQueueFlusher 自動 replay
+      const isNetworkErr =
+        err instanceof TypeError ||
+        (typeof navigator !== 'undefined' && navigator.onLine === false)
+      if (isNetworkErr) {
+        try {
+          await enqueueEntry(payload)
+          setStatus('queued')
+          return
+        } catch {
+          // fallthrough → 顯示錯誤
+        }
+      }
       setStatus('error')
       const msg = err instanceof Error ? err.message : '儲存失敗'
       toast.error(msg)
     }
   }
 
-  // 把 latest state 同步到 ref 並排程儲存（mood / tags 改變時）
+  // 把 latest state 同步到 ref 並排程儲存（mood / tags / weather 改變時）
   useEffect(() => {
     latestState.current.moodScore = moodScore
     latestState.current.moodTags = moodTags
     latestState.current.customTags = customTags
+    latestState.current.weather = weather
     if (editor && !editor.isEmpty) scheduleSave()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moodScore, moodTags, customTags])
+  }, [moodScore, moodTags, customTags, weather])
 
   // 卸載前若還有 pending 變更 → flush
   useEffect(() => {
@@ -146,6 +166,12 @@ export function JournalEditor({ date, initialEntry }: Props) {
           <SaveIndicator status={status} />
         </div>
         <div className="mt-3 space-y-3">
+          <div className="flex items-start gap-3">
+            <span className="mt-1 w-12 shrink-0 text-sm text-muted-foreground">天氣</span>
+            <div className="flex-1">
+              <WeatherPicker value={weather} onChange={setWeather} />
+            </div>
+          </div>
           <div className="flex items-start gap-3">
             <span className="mt-1 w-12 shrink-0 text-sm text-muted-foreground">情緒</span>
             <TagInput
@@ -268,6 +294,13 @@ function SaveIndicator({ status }: { status: SaveStatus }) {
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Check className="h-3 w-3 text-green-600" />
         已儲存
+      </div>
+    )
+  }
+  if (status === 'queued') {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-amber-600">
+        離線：恢復連線後自動同步
       </div>
     )
   }

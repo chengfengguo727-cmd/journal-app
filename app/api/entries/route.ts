@@ -112,6 +112,7 @@ export async function POST(request: Request) {
     mood_tags: (body.mood_tags as string[]) ?? [],
     custom_tags: (body.custom_tags as string[]) ?? [],
     people_tags: (body.people_tags as string[]) ?? [],
+    weather: (body.weather as string | null) ?? null,
     location: (body.location as string) ?? null,
     location_lat: (body.location_lat as number | null) ?? null,
     location_lng: (body.location_lng as number | null) ?? null,

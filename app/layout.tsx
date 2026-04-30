@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Toaster } from 'sonner'
+import { Providers } from '@/components/providers'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -9,7 +10,10 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#ffffff',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0b1220' },
+  ],
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -22,8 +26,8 @@ export default function RootLayout({
   return (
     <html lang="zh-TW" suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        {children}
-        <Toaster position="top-center" richColors closeButton />
+        <Providers>{children}</Providers>
+        <Toaster position="top-center" richColors closeButton theme="system" />
       </body>
     </html>
   )
