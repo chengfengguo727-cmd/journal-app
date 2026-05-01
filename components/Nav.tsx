@@ -81,7 +81,7 @@ export function BottomTabs() {
   const pathname = usePathname()
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 flex h-16 items-center justify-around border-t bg-background pb-[env(safe-area-inset-bottom)] md:hidden">
-      {NAV_ITEMS.slice(0, 5).map((item) => {
+      {NAV_ITEMS.map((item) => {
         const active = item.exact
           ? pathname === item.href || pathname.startsWith('/journal')
           : pathname.startsWith(item.href)
